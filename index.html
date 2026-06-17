@@ -1,59 +1,564 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-    <meta charset="UTF-8">
-    <title>Lazarus Glass - Rastreo GPS</title>
-    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
-    <style>
-        body { font-family: Arial, sans-serif; text-align: center; margin: 0; padding: 0; }
-        #map { height: 80vh; width: 100%; }
-        h1 { background: #333; color: white; padding: 10px; margin: 0; }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lazarus Glass — Panel de Control</title>
+
+  <!-- Firebase SDK -->
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-app-compat.js"></script>
+  <script src="https://www.gstatic.com/firebasejs/9.22.2/firebase-database-compat.js"></script>
+
+  <style>
+    /* ── Reset y base ── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      background: #0a0e1a;
+      color: #e0e6f0;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 24px 16px;
+    }
+
+    h1 {
+      font-size: 1.8rem;
+      font-weight: 700;
+      letter-spacing: 2px;
+      color: #7eb8f7;
+      margin-bottom: 4px;
+    }
+
+    .subtitulo {
+      font-size: 0.85rem;
+      color: #556;
+      margin-bottom: 32px;
+      letter-spacing: 1px;
+    }
+
+    /* ── Grid principal ── */
+    .grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      width: 100%;
+      max-width: 900px;
+    }
+
+    .card {
+      background: #131929;
+      border: 1px solid #1e2d45;
+      border-radius: 12px;
+      padding: 20px 24px;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+
+    .card.wide { grid-column: 1 / -1; }
+
+    .card-title {
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 2px;
+      text-transform: uppercase;
+      color: #4a6a9a;
+      margin-bottom: 4px;
+    }
+
+    /* ── Lentes SVG ── */
+    .lentes-wrap {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      padding: 12px 0;
+    }
+
+    /* ── Indicador WiFi ── */
+    .wifi-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 1rem;
+    }
+
+    .dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      background: #334;
+      transition: background 0.4s;
+      flex-shrink: 0;
+    }
+
+    .dot.online  { background: #2ecc71; box-shadow: 0 0 8px #2ecc71aa; }
+    .dot.offline { background: #e74c3c; box-shadow: 0 0 8px #e74c3caa; }
+
+    .wifi-label { font-weight: 600; font-size: 1.1rem; }
+    .wifi-ip    { font-size: 0.8rem; color: #556; margin-top: 2px; }
+
+    /* ── Color detectado ── */
+    .color-display {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .color-swatch {
+      width: 56px;
+      height: 56px;
+      border-radius: 10px;
+      background: #1e2d45;
+      border: 2px solid #2a3d5a;
+      transition: background 0.4s, box-shadow 0.4s;
+      flex-shrink: 0;
+    }
+
+    .color-swatch.rojo     { background: #e74c3c; box-shadow: 0 0 16px #e74c3c88; }
+    .color-swatch.amarillo { background: #f1c40f; box-shadow: 0 0 16px #f1c40f88; }
+    .color-swatch.verde    { background: #2ecc71; box-shadow: 0 0 16px #2ecc7188; }
+    .color-swatch.ninguno  { background: #1e2d45; box-shadow: none; }
+
+    .color-nombre {
+      font-size: 1.4rem;
+      font-weight: 700;
+      text-transform: capitalize;
+    }
+
+    .color-nombre.rojo     { color: #e74c3c; }
+    .color-nombre.amarillo { color: #f1c40f; }
+    .color-nombre.verde    { color: #2ecc71; }
+    .color-nombre.ninguno  { color: #334; }
+
+    /* ── Sensores ultrasonicos ── */
+    .sensores-row {
+      display: flex;
+      gap: 16px;
+    }
+
+    .sensor-box {
+      flex: 1;
+      background: #0d1520;
+      border-radius: 8px;
+      padding: 14px 16px;
+      border: 1px solid #1e2d45;
+      text-align: center;
+      transition: border-color 0.3s, box-shadow 0.3s;
+    }
+
+    .sensor-box.alerta {
+      border-color: #e74c3c;
+      box-shadow: 0 0 12px #e74c3c55;
+    }
+
+    .sensor-label {
+      font-size: 0.7rem;
+      letter-spacing: 1px;
+      text-transform: uppercase;
+      color: #4a6a9a;
+      margin-bottom: 8px;
+    }
+
+    .sensor-dist {
+      font-size: 1.6rem;
+      font-weight: 700;
+      color: #7eb8f7;
+      font-variant-numeric: tabular-nums;
+    }
+
+    .sensor-dist.alerta { color: #e74c3c; }
+    .sensor-unit { font-size: 0.75rem; color: #4a6a9a; }
+
+    .sensor-badge {
+      display: inline-block;
+      margin-top: 6px;
+      padding: 2px 10px;
+      border-radius: 99px;
+      font-size: 0.7rem;
+      font-weight: 600;
+      letter-spacing: 1px;
+      background: #1e2d45;
+      color: #4a6a9a;
+    }
+
+    .sensor-badge.alerta { background: #e74c3c22; color: #e74c3c; }
+
+    /* ── Mapa / Ubicacion ── */
+    .ubicacion-info {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .ubicacion-fila {
+      display: flex;
+      justify-content: space-between;
+      font-size: 0.9rem;
+    }
+
+    .ubicacion-fila span:first-child { color: #4a6a9a; }
+    .ubicacion-fila span:last-child  { font-weight: 600; }
+
+    #mapa {
+      width: 100%;
+      height: 220px;
+      border-radius: 8px;
+      overflow: hidden;
+      margin-top: 12px;
+      border: 1px solid #1e2d45;
+    }
+
+    #mapa iframe {
+      width: 100%;
+      height: 100%;
+      border: none;
+    }
+
+    /* ── Timestamp ── */
+    .timestamp {
+      font-size: 0.75rem;
+      color: #334;
+      text-align: right;
+      margin-top: 4px;
+    }
+
+    /* ── Responsive ── */
+    @media (max-width: 600px) {
+      .grid { grid-template-columns: 1fr; }
+      .card.wide { grid-column: 1; }
+    }
+  </style>
 </head>
 <body>
 
-    <h1>Ubicación Lazarus Glass</h1>
-    <div id="map"></div>
+  <h1>LAZARUS GLASS</h1>
+  <p class="subtitulo">PANEL DE MONITOREO EN TIEMPO REAL</p>
 
-    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
-    
-    <script type="module">
-        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-app.js";
-        import { getDatabase, ref, onValue } from "https://www.gstatic.com/firebasejs/10.8.1/firebase-database.js";
+  <div class="grid">
 
-        // CONFIGURACIÓN: Reemplacen con el config de su App Web de Firebase
-        const firebaseConfig = {
-            apiKey: "AIzaSy...SU_API_KEY_WEB_AQUI...",
-            authDomain: "lazarus-glass-4194d.firebaseapp.com",
-            databaseURL: "https://lazarus-glass-4194d-default-rtdb.firebaseio.com",
-            projectId: "lazarus-glass-4194d",
-            storageBucket: "lazarus-glass-4194d.appspot.com",
-            messagingSenderId: "1025256803263",
-            appId: "1:1025256803263:web:XXXXXXXXXXXXXXX"
-        };
+    <!-- ── Visualizacion de lentes ── -->
+    <div class="card wide">
+      <div class="card-title">Estado de sensores — Vista superior</div>
+      <div class="lentes-wrap">
+        <svg id="lentes-svg" viewBox="0 0 500 200"
+             width="480" height="192"
+             xmlns="http://www.w3.org/2000/svg">
 
-        const app = initializeApp(firebaseConfig);
-        const db = getDatabase(app);
+          <!-- Marco exterior de los lentes -->
+          <rect x="10" y="60" width="480" height="80"
+                rx="16" ry="16"
+                fill="#1a2438" stroke="#2a3d5a" stroke-width="2"/>
 
-        // Inicializar Mapa centrado en México
-        const map = L.map('map').setView([21.1213, -101.6826], 13);
-        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '© OpenStreetMap contributors'
-        }).addTo(map);
+          <!-- Lente izquierdo -->
+          <rect id="lente-izq" x="20" y="70" width="190" height="60"
+                rx="10" ry="10"
+                fill="#0d1520" stroke="#2a3d5a" stroke-width="1.5"/>
 
-        let marker = L.marker([21.1213, -101.6826]).addTo(map);
+          <!-- Lente derecho -->
+          <rect id="lente-der" x="290" y="70" width="190" height="60"
+                rx="10" ry="10"
+                fill="#0d1520" stroke="#2a3d5a" stroke-width="1.5"/>
 
-        // Escuchar cambios en Firebase en tiempo real
-        const locationRef = ref(db, 'ubicacion');
-        onValue(locationRef, (snapshot) => {
-            const data = snapshot.val();
-            if (data && data.lat && data.lng) {
-                console.log("Nueva ubicación:", data);
-                const newLatLng = new L.LatLng(data.lat, data.lng);
-                marker.setLatLng(newLatLng);
-                map.panTo(newLatLng);
-            }
-        });
-    </script>
+          <!-- Puente central -->
+          <rect x="210" y="88" width="80" height="24"
+                rx="4" ry="4"
+                fill="#131929" stroke="#2a3d5a" stroke-width="1"/>
+
+          <!-- Modulo frontal (camara Pixy2) centrado arriba -->
+          <rect x="210" y="10" width="80" height="50"
+                rx="6" ry="6"
+                fill="#1a2438" stroke="#3a5a8a" stroke-width="2"/>
+          <text x="250" y="30" text-anchor="middle"
+                font-size="9" fill="#4a6a9a" font-family="monospace">PIXY2</text>
+
+          <!-- Circulo de la camara -->
+          <circle cx="250" cy="44" r="10"
+                  fill="#0d1520" stroke="#3a5a8a" stroke-width="1.5"/>
+          <circle id="pixy-led" cx="250" cy="44" r="6"
+                  fill="#1e2d45"/>
+
+          <!-- Texto sensor izquierdo -->
+          <text id="txt-izq" x="115" y="96"
+                text-anchor="middle" font-size="13"
+                fill="#7eb8f7" font-family="monospace" font-weight="bold">
+            ---
+          </text>
+          <text x="115" y="112" text-anchor="middle"
+                font-size="9" fill="#4a6a9a" font-family="monospace">
+            SENSOR IZQ
+          </text>
+
+          <!-- Texto sensor derecho -->
+          <text id="txt-der" x="385" y="96"
+                text-anchor="middle" font-size="13"
+                fill="#7eb8f7" font-family="monospace" font-weight="bold">
+            ---
+          </text>
+          <text x="385" y="112" text-anchor="middle"
+                font-size="9" fill="#4a6a9a" font-family="monospace">
+            SENSOR DER
+          </text>
+
+          <!-- Ondas sensor izquierdo (visibles en alerta) -->
+          <g id="onda-izq" opacity="0">
+            <ellipse cx="30" cy="100" rx="14" ry="20"
+                     fill="none" stroke="#e74c3c" stroke-width="1.5" opacity="0.8"/>
+            <ellipse cx="30" cy="100" rx="22" ry="30"
+                     fill="none" stroke="#e74c3c" stroke-width="1" opacity="0.5"/>
+            <ellipse cx="30" cy="100" rx="30" ry="40"
+                     fill="none" stroke="#e74c3c" stroke-width="0.5" opacity="0.3"/>
+          </g>
+
+          <!-- Ondas sensor derecho -->
+          <g id="onda-der" opacity="0">
+            <ellipse cx="470" cy="100" rx="14" ry="20"
+                     fill="none" stroke="#e74c3c" stroke-width="1.5" opacity="0.8"/>
+            <ellipse cx="470" cy="100" rx="22" ry="30"
+                     fill="none" stroke="#e74c3c" stroke-width="1" opacity="0.5"/>
+            <ellipse cx="470" cy="100" rx="30" ry="40"
+                     fill="none" stroke="#e74c3c" stroke-width="0.5" opacity="0.3"/>
+          </g>
+
+        </svg>
+      </div>
+    </div>
+
+    <!-- ── Estado WiFi ── -->
+    <div class="card">
+      <div class="card-title">Conectividad</div>
+      <div class="wifi-row">
+        <div class="dot" id="wifi-dot"></div>
+        <div>
+          <div class="wifi-label" id="wifi-label">Desconocido</div>
+          <div class="wifi-ip" id="wifi-ip">IP: —</div>
+        </div>
+      </div>
+      <div class="timestamp" id="wifi-ts"></div>
+    </div>
+
+    <!-- ── Color detectado ── -->
+    <div class="card">
+      <div class="card-title">Color detectado — Pixy2</div>
+      <div class="color-display">
+        <div class="color-swatch ninguno" id="color-swatch"></div>
+        <div>
+          <div class="color-nombre ninguno" id="color-nombre">Ninguno</div>
+          <div style="font-size:0.8rem;color:#4a6a9a;margin-top:4px;">
+            Ultimo color reconocido
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Sensores ultrasonicos ── -->
+    <div class="card wide">
+      <div class="card-title">Sensores ultrasonicos</div>
+      <div class="sensores-row">
+        <div class="sensor-box" id="box-izq">
+          <div class="sensor-label">Izquierdo</div>
+          <div class="sensor-dist" id="dist-izq">---</div>
+          <div class="sensor-unit">cm</div>
+          <span class="sensor-badge" id="badge-izq">OK</span>
+        </div>
+        <div class="sensor-box" id="box-der">
+          <div class="sensor-label">Derecho</div>
+          <div class="sensor-dist" id="dist-der">---</div>
+          <div class="sensor-unit">cm</div>
+          <span class="sensor-badge" id="badge-der">OK</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Ubicacion por IP ── -->
+    <div class="card wide">
+      <div class="card-title">Ubicacion aproximada (via IP)</div>
+      <div class="ubicacion-info">
+        <div class="ubicacion-fila">
+          <span>IP publica</span>
+          <span id="geo-ip">—</span>
+        </div>
+        <div class="ubicacion-fila">
+          <span>Ciudad / Region</span>
+          <span id="geo-ciudad">—</span>
+        </div>
+        <div class="ubicacion-fila">
+          <span>Pais</span>
+          <span id="geo-pais">—</span>
+        </div>
+        <div class="ubicacion-fila">
+          <span>Coordenadas</span>
+          <span id="geo-coords">—</span>
+        </div>
+      </div>
+      <div id="mapa">
+        <iframe id="mapa-frame"
+          src="about:blank"
+          allowfullscreen loading="lazy">
+        </iframe>
+      </div>
+    </div>
+
+  </div><!-- /grid -->
+
+  <script>
+    // ── Firebase config ──
+    const firebaseConfig = {
+  apiKey: "AIzaSyDaAm_NsBtZ9s_G9fjsTZS-6jfaC9VztPU",
+  authDomain: "lazarus-glass-4194d.firebaseapp.com",
+  databaseURL: "https://lazarus-glass-4194d-default-rtdb.firebaseio.com",
+  projectId: "lazarus-glass-4194d",
+  storageBucket: "lazarus-glass-4194d.firebasestorage.app",
+  messagingSenderId: "364163260429",
+  appId: "1:364163260429:web:eb30e4cdcb560f85a7f544"
+};
+
+    firebase.initializeApp(firebaseConfig);
+    const db   = firebase.database();
+    const PATH = "dispositivos/lazarus_glass_01";
+
+    // ── Helpers ──
+    function setText(id, val) {
+      const el = document.getElementById(id);
+      if (el) el.textContent = val ?? '—';
+    }
+
+    function formatTs(ts) {
+      if (!ts) return '';
+      const d = new Date(ts * 1000);
+      return d.toLocaleTimeString('es-MX');
+    }
+
+    // ── Actualizar SVG sensores ──
+    function actualizarSVG(alertaIzq, alertaDer, distIzq, distDer) {
+      const UMBRAL = 10;
+
+      // Textos de distancia en SVG
+      const txtIzq = document.getElementById('txt-izq');
+      const txtDer = document.getElementById('txt-der');
+      txtIzq.textContent = distIzq != null ? distIzq.toFixed(1) + ' cm' : '---';
+      txtDer.textContent = distDer != null ? distDer.toFixed(1) + ' cm' : '---';
+
+      // Color de lente segun alerta
+      const lenteIzq = document.getElementById('lente-izq');
+      const lenteDer = document.getElementById('lente-der');
+      lenteIzq.style.fill = alertaIzq ? '#2a0d0d' : '#0d1520';
+      lenteIzq.style.stroke = alertaIzq ? '#e74c3c' : '#2a3d5a';
+      lenteDer.style.fill = alertaDer ? '#2a0d0d' : '#0d1520';
+      lenteDer.style.stroke = alertaDer ? '#e74c3c' : '#2a3d5a';
+
+      // Ondas de alerta
+      document.getElementById('onda-izq').style.opacity = alertaIzq ? '1' : '0';
+      document.getElementById('onda-der').style.opacity = alertaDer ? '1' : '0';
+    }
+
+    // ── Actualizar LED Pixy en SVG ──
+    const COLORES_LED = {
+      rojo:     '#e74c3c',
+      amarillo: '#f1c40f',
+      verde:    '#2ecc71',
+      ninguno:  '#1e2d45'
+    };
+
+    function actualizarPixyLed(color) {
+      const led = document.getElementById('pixy-led');
+      led.style.fill = COLORES_LED[color] || '#1e2d45';
+    }
+
+    // ── Actualizar color card ──
+    function actualizarColor(color) {
+      const swatch = document.getElementById('color-swatch');
+      const nombre = document.getElementById('color-nombre');
+      const clases = ['rojo', 'amarillo', 'verde', 'ninguno'];
+
+      swatch.className = 'color-swatch ' + (clases.includes(color) ? color : 'ninguno');
+      nombre.className = 'color-nombre '  + (clases.includes(color) ? color : 'ninguno');
+      nombre.textContent = color
+        ? color.charAt(0).toUpperCase() + color.slice(1)
+        : 'Ninguno';
+
+      actualizarPixyLed(color || 'ninguno');
+    }
+
+    // ── Actualizar WiFi ──
+    function actualizarWifi(estado, ip, ts) {
+      const dot   = document.getElementById('wifi-dot');
+      const label = document.getElementById('wifi-label');
+      const ipEl  = document.getElementById('wifi-ip');
+
+      const online = estado === 'conectado';
+      dot.className   = 'dot ' + (online ? 'online' : 'offline');
+      label.textContent = online ? 'Conectado' : 'Desconectado';
+      ipEl.textContent  = 'IP local: ' + (ip || '—');
+      setText('wifi-ts', ts ? 'Ultima actualización: ' + formatTs(ts) : '');
+    }
+
+    // ── Actualizar sensores UI ──
+    function actualizarSensores(alertaIzq, alertaDer, distIzq, distDer) {
+      const boxIzq   = document.getElementById('box-izq');
+      const boxDer   = document.getElementById('box-der');
+      const distIzqEl = document.getElementById('dist-izq');
+      const distDerEl = document.getElementById('dist-der');
+      const badgeIzq  = document.getElementById('badge-izq');
+      const badgeDer  = document.getElementById('badge-der');
+
+      distIzqEl.textContent = distIzq != null ? distIzq.toFixed(1) : '---';
+      distDerEl.textContent = distDer != null ? distDer.toFixed(1) : '---';
+
+      boxIzq.className    = 'sensor-box' + (alertaIzq ? ' alerta' : '');
+      distIzqEl.className = 'sensor-dist' + (alertaIzq ? ' alerta' : '');
+      badgeIzq.className  = 'sensor-badge' + (alertaIzq ? ' alerta' : '');
+      badgeIzq.textContent = alertaIzq ? '⚠ OBSTACULO' : 'OK';
+
+      boxDer.className    = 'sensor-box' + (alertaDer ? ' alerta' : '');
+      distDerEl.className = 'sensor-dist' + (alertaDer ? ' alerta' : '');
+      badgeDer.className  = 'sensor-badge' + (alertaDer ? ' alerta' : '');
+      badgeDer.textContent = alertaDer ? '⚠ OBSTACULO' : 'OK';
+
+      actualizarSVG(alertaIzq, alertaDer, distIzq, distDer);
+    }
+
+    // ── Actualizar mapa ──
+    function actualizarMapa(lat, lng, ciudad, region, pais, ip) {
+      if (!lat || !lng) return;
+
+      setText('geo-ip',     ip     || '—');
+      setText('geo-ciudad', ciudad && region ? ciudad + ', ' + region : ciudad || '—');
+      setText('geo-pais',   pais   || '—');
+      setText('geo-coords', lat.toFixed(4) + ', ' + lng.toFixed(4));
+
+      // Insertar mapa OpenStreetMap (sin API key)
+      const src = 'https://www.openstreetmap.org/export/embed.html'
+        + '?bbox=' + (lng - 0.05) + '%2C' + (lat - 0.05)
+        + '%2C'    + (lng + 0.05) + '%2C' + (lat + 0.05)
+        + '&layer=mapnik'
+        + '&marker=' + lat + '%2C' + lng;
+
+      const frame = document.getElementById('mapa-frame');
+      if (frame.src !== src) frame.src = src;
+    }
+
+    // ── Escuchar Firebase: telemetria ──
+    db.ref(PATH + '/telemetria').on('value', snap => {
+      const d = snap.val();
+      if (!d) return;
+
+      actualizarWifi(d.estado_wifi, d.ip_address, d.timestamp);
+      actualizarColor(d.ultimo_color_detectado || 'ninguno');
+      actualizarSensores(
+        !!d.sensor_izq_alerta, !!d.sensor_der_alerta,
+        d.dist_izq_cm, d.dist_der_cm
+      );
+    });
+
+    // ── Escuchar Firebase: geoip ──
+    db.ref(PATH + '/ubicacion_geoip').on('value', snap => {
+      const d = snap.val();
+      if (!d) return;
+      actualizarMapa(d.lat, d.lng, d.ciudad, d.region, d.pais, d.ip_publica);
+    });
+  </script>
 </body>
 </html>
